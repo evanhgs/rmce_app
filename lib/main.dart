@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:rmce_app/pages/friends_page.dart';
 import 'package:rmce_app/pages/home_page.dart';
 import 'package:rmce_app/pages/map_page.dart';
+import 'package:rmce_app/pages/top_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -34,7 +36,9 @@ class _RootPageState extends State<RootPage> {
 
   final List<Widget> _pages = const [
     MyHomePage(title: "Chrono"),
-    MapPage(title: "Map")
+    MapPage(title: "Map"),
+    TopPage(title: "Classement"),
+    FriendsPage(title: "Ami(e)s"),
   ];
 
   @override
@@ -49,8 +53,10 @@ class _RootPageState extends State<RootPage> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Chrono',),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Chrono', backgroundColor: Colors.black12),
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map',),
+          BottomNavigationBarItem(icon: Icon(Icons.score), label: 'Classement'),
+          BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Ami(e)s'),
         ],
       ),
     );
