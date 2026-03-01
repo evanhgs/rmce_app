@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 
 class MyHomePage extends StatefulWidget {
@@ -27,6 +29,12 @@ class _MyHomePageState extends State<MyHomePage> {
   final Stopwatch _stopwatch = Stopwatch();
 
   Duration sensorInterval = SensorInterval.normalInterval;
+  Flutter3DController controller = Flutter3DController();
+
+  String axis_right = "0.0";
+  String axis_left = "0.0";
+  String axis_front = "0.0";
+  String axis_back = "0.0";
 
   String _formatTime(int ms) {
     int hundreds = (ms / 10).truncate();
@@ -74,6 +82,24 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  // afficher l'accélaration avant, arriere, et sur les cotés comme ça pas d'affichage de négatif
+  void setup2dAcceleration() {
+
+    // si le x qui représente les cotés
+    // négatif alors gauche et positif droite
+    if (_userAccelerometerEvent!.x < 0.0) {
+      axis_left = _userAccelerometerEvent?.x.toStringAsFixed(1) ?? '0.00';
+    } else {
+      axis_right = _userAccelerometerEvent?.x.toStringAsFixed(1) ?? '0.00';
+    }
+    if (_userAccelerometerEvent!.z < 0.0) {
+      axis_back = _userAccelerometerEvent?.z.toStringAsFixed(1) ?? '0.00';
+    } else {
+      axis_front = _userAccelerometerEvent?.z.toStringAsFixed(1) ?? '0.00';
+    }
+  }
+
+
   @override
   void initState() {
     super.initState();
@@ -112,52 +138,86 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme
-            .of(context)
-            .colorScheme
-            .inversePrimary,
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(_userAccelerometerEvent?.x.toStringAsFixed(1) ?? '?'),
-            Text(_userAccelerometerEvent?.y.toStringAsFixed(1) ?? '?'),
-            Text(_userAccelerometerEvent?.z.toStringAsFixed(1) ?? '?'),
-            Text('${_userAccelerometerLastInterval?.toString() ?? '?'} ms'),
-            Text(
-              _formatTime(_stopwatch.elapsedMilliseconds),
-              style: const TextStyle(
-                fontSize: 60.0,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Courier',
-              ),
-            ),
-            const SizedBox(height: 30,),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
-                  onPressed: _stopwatch.isRunning ? null : _startStopwatch,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade100),
-                  child: const Text('Start'),
-                ),
-                ElevatedButton(
-                  onPressed: _stopwatch.isRunning ? _stopStopwatch : null,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade100),
-                  child: const Text('Stop'),
-                ),
-                const SizedBox(width: 10,),
-                ElevatedButton(
-                    onPressed: _resetStopwatch, child: const Text('Reset'))
-              ],
-            )
-          ],
-        ),
-      ),
+      body: Column(
+        children: <Widget>[
+          // chrono
+          Expanded(
+              flex: 2,
+              child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                              _formatTime(_stopwatch.elapsedMilliseconds),
+                              style: const TextStyle(
+                                fontSize: 60.0,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Courier',
+                              )
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 30,),
+                      // acceleraometre
+                      Text(
+                        'X: ${_userAccelerometerEvent?.x.toStringAsFixed(1) ?? '?'}',
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                      Text(
+                        'Z: ${_userAccelerometerEvent?.z.toStringAsFixed(1) ?? '?'}',
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                      const SizedBox(height: 10,),
+                      // start and stop button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(
+                            onPressed: _stopwatch.isRunning ? null : _startStopwatch,
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green.shade100),
+                            child: const Text('Start'),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: _stopwatch.isRunning ? _stopStopwatch : null,
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade100),
+                            child: const Text('Stop'),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton(
+                              onPressed: _resetStopwatch,
+                              child: const Text('Reset'))
+                        ],
+                      )
+                    ],
+                  )
+              )
+          ),
+          // modele 3d
+          Expanded(
+              flex: 3,
+              child: Flutter3DViewer(
+                enableTouch: true,
+                controller: controller,
+                src: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+                onProgress: (double progressValue) {
+                  debugPrint('chargement du modele: $progressValue');
+                },
+                onError: (String error) {
+                  debugPrint('erreur: $error');
+                },
+              )
+          ),
+        ]
+      )
     );
   }
 }
