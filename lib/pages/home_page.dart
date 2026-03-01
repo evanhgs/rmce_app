@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 
 class MyHomePage extends StatefulWidget {
@@ -30,6 +29,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Duration sensorInterval = SensorInterval.normalInterval;
   Flutter3DController controller = Flutter3DController();
+
+  bool _isBtnVisible = false;
 
   String axis_right = "0.0";
   String axis_left = "0.0";
@@ -141,11 +142,12 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: Column(
-        children: <Widget>[
+      body: SafeArea(
+        child: Column(
+          children: <Widget>[
           // chrono
           Expanded(
-              flex: 2,
+              flex: 3,
               child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -163,8 +165,8 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 30,),
-                      // acceleraometre
+                      const SizedBox(height: 20,),
+                      // accelerometre
                       Text(
                         'X: ${_userAccelerometerEvent?.x.toStringAsFixed(1) ?? '?'}',
                         style: const TextStyle(fontSize: 20),
@@ -173,28 +175,64 @@ class _MyHomePageState extends State<MyHomePage> {
                         'Z: ${_userAccelerometerEvent?.z.toStringAsFixed(1) ?? '?'}',
                         style: const TextStyle(fontSize: 20),
                       ),
-                      const SizedBox(height: 10,),
-                      // start and stop button
+                      const SizedBox(height: 8,),
+                      // start and stop img button
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ElevatedButton(
-                            onPressed: _stopwatch.isRunning ? null : _startStopwatch,
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green.shade100),
-                            child: const Text('Start'),
+                          SizedBox(
+                            width: 120,
+                            height: 120,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                if (!_isBtnVisible)
+                                  GestureDetector(
+                                    onTap: () {
+                                      _startStopwatch();
+                                      setState(() {
+                                        _isBtnVisible = true;
+                                      });
+                                    },
+                                    child: Image.asset(
+                                      'assets/images/green_btn.png',
+                                      width: 120,
+                                      height: 120,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                if (_isBtnVisible)
+                                  GestureDetector(
+                                    onTap: () {
+                                      _stopStopwatch();
+                                      setState(() {
+                                        _isBtnVisible = false;
+                                      });
+                                    },
+                                    child: Image.asset(
+                                      'assets/images/red_btn.png',
+                                      width: 120,
+                                      height: 120,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          ElevatedButton(
-                            onPressed: _stopwatch.isRunning ? _stopStopwatch : null,
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red.shade100),
-                            child: const Text('Stop'),
-                          ),
-                          const SizedBox(width: 10),
-                          ElevatedButton(
-                              onPressed: _resetStopwatch,
-                              child: const Text('Reset'))
+                          const SizedBox(width: 20),
+                          // Bouton Reset
+                          GestureDetector(
+                            onTap: _resetStopwatch,
+                            child: Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[400],
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.restart_alt, size: 30),
+                            ),
+                          )
                         ],
                       )
                     ],
@@ -203,7 +241,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
           // modele 3d
           Expanded(
-              flex: 3,
+              flex: 2,
               child: Flutter3DViewer(
                 enableTouch: true,
                 controller: controller,
@@ -218,6 +256,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ]
       )
+      ),
     );
   }
 }
