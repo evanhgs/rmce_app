@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import 'package:geolocator/geolocator.dart';
+import '../services/gps_service.dart';
 
 
 class MyHomePage extends StatefulWidget {
@@ -40,12 +40,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
   DateTime? _lastAccelUpdate;
 
-  // Compteur de vitesse GPS réel
-  double _speed = 0.0;
-  double _maxSpeed = 0.0;
-  double _maxAcceleration = 0.0;
-  StreamSubscription<Position>? _positionStream;
-  bool _gpsEnabled = false;
+  // Service GPS singleton
+  final GPSService _gpsService = GPSService();
+  StreamSubscription<SpeedData>? _speedSubscription;
 
   String _formatTime(int ms) {
     int hundreds = (ms / 10).truncate();
@@ -87,79 +84,24 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _timer?.cancel();
-    _positionStream?.cancel();
+    _speedSubscription?.cancel();
     super.dispose();
     for (final subscription in _streamSubscriptions) {
       subscription.cancel();
     }
   }
 
-  // Initialiser le GPS et obtenir la vitesse en temps réel
-  Future<void> _initGPS() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    // Vérifier si le service de localisation est activé
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('Service de localisation désactivé');
-      setState(() {
-        _gpsEnabled = false;
-      });
-      return;
-    }
-
-    // Vérifier les permissions
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        debugPrint('Permission de localisation refusée');
-        setState(() {
-          _gpsEnabled = false;
-        });
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      debugPrint('Permission de localisation refusée définitivement');
-      setState(() {
-        _gpsEnabled = false;
-      });
-      return;
-    }
-
-    // Obtenir la position en temps réel
-    setState(() {
-      _gpsEnabled = true;
-    });
-
-    const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
-    );
-
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    ).listen((Position position) {
-      setState(() {
-        // La vitesse est en m/s, conversion en km/h
-        _speed = (position.speed * 3.6).clamp(0, 400);
-
-        if (_speed > _maxSpeed) {
-          _maxSpeed = _speed;
-        }
-      });
-    });
-  }
 
   @override
   void initState() {
     super.initState();
 
-    // Initialiser le GPS
-    _initGPS();
+    _gpsService.init();
+
+    _speedSubscription = _gpsService.speedStream.listen((speedData) {
+      setState(() {
+      });
+    });
 
     _streamSubscriptions.add(
       userAccelerometerEventStream(samplingPeriod: sensorInterval).listen(
@@ -171,7 +113,6 @@ class _MyHomePageState extends State<MyHomePage> {
             setState(() {
               _userAccelerometerEvent = event;
 
-              // Calculer les valeurs positives pour chaque côté
               // X : gauche (-) / droite (+)
               if (event.x < 0) {
                 axis_left = event.x.abs().toStringAsFixed(1);
@@ -190,11 +131,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 axis_back = "0.0";
               }
 
-              // Calculer l'accélération maximale
+              // accélération max
               double totalAccel = (event.x.abs() + event.z.abs()) / 2;
-              if (totalAccel > _maxAcceleration) {
-                _maxAcceleration = totalAccel;
-              }
 
 
               if (_userAccelerometerUpdateTime != null) {
@@ -301,7 +239,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           children: [
                             // Vitesse
                             Text(
-                              _speed.toInt().toString(),
+                              _gpsService.currentSpeed.toInt().toString(),
                               style: TextStyle(
                                 fontSize: 80,
                                 fontWeight: FontWeight.w200,
@@ -385,8 +323,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       onTap: () {
                         _resetStopwatch();
                         setState(() {
-                          _maxSpeed = 0;
-                          _maxAcceleration = 0;
+                          _gpsService.resetMaxSpeed();
                         });
                       },
                       child: Container(
