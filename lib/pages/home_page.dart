@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:geolocator/geolocator.dart';
 
 
 class MyHomePage extends StatefulWidget {
@@ -27,7 +28,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final _streamSubscriptions = <StreamSubscription<dynamic>>[];
   final Stopwatch _stopwatch = Stopwatch();
 
-  Duration sensorInterval = SensorInterval.normalInterval;
+  Duration sensorInterval = SensorInterval.uiInterval;
   Flutter3DController controller = Flutter3DController();
 
   bool _isBtnVisible = false;
@@ -36,6 +37,15 @@ class _MyHomePageState extends State<MyHomePage> {
   String axis_left = "0.0";
   String axis_front = "0.0";
   String axis_back = "0.0";
+
+  DateTime? _lastAccelUpdate;
+
+  // Compteur de vitesse GPS réel
+  double _speed = 0.0;
+  double _maxSpeed = 0.0;
+  double _maxAcceleration = 0.0;
+  StreamSubscription<Position>? _positionStream;
+  bool _gpsEnabled = false;
 
   String _formatTime(int ms) {
     int hundreds = (ms / 10).truncate();
@@ -53,7 +63,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (!_stopwatch.isRunning) {
       _stopwatch.start();
       _timer = Timer.periodic(
-          const Duration(milliseconds: 30), (timer) {
+          const Duration(milliseconds: 50), (timer) {
         setState(() {});
       });
     }
@@ -77,46 +87,127 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _positionStream?.cancel();
     super.dispose();
     for (final subscription in _streamSubscriptions) {
       subscription.cancel();
     }
   }
 
-  // afficher l'accélaration avant, arriere, et sur les cotés comme ça pas d'affichage de négatif
-  void setup2dAcceleration() {
+  // Initialiser le GPS et obtenir la vitesse en temps réel
+  Future<void> _initGPS() async {
+    bool serviceEnabled;
+    LocationPermission permission;
 
-    // si le x qui représente les cotés
-    // négatif alors gauche et positif droite
-    if (_userAccelerometerEvent!.x < 0.0) {
-      axis_left = _userAccelerometerEvent?.x.toStringAsFixed(1) ?? '0.00';
-    } else {
-      axis_right = _userAccelerometerEvent?.x.toStringAsFixed(1) ?? '0.00';
+    // Vérifier si le service de localisation est activé
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('Service de localisation désactivé');
+      setState(() {
+        _gpsEnabled = false;
+      });
+      return;
     }
-    if (_userAccelerometerEvent!.z < 0.0) {
-      axis_back = _userAccelerometerEvent?.z.toStringAsFixed(1) ?? '0.00';
-    } else {
-      axis_front = _userAccelerometerEvent?.z.toStringAsFixed(1) ?? '0.00';
+
+    // Vérifier les permissions
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('Permission de localisation refusée');
+        setState(() {
+          _gpsEnabled = false;
+        });
+        return;
+      }
     }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('Permission de localisation refusée définitivement');
+      setState(() {
+        _gpsEnabled = false;
+      });
+      return;
+    }
+
+    // Obtenir la position en temps réel
+    setState(() {
+      _gpsEnabled = true;
+    });
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    );
+
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) {
+      setState(() {
+        // La vitesse est en m/s, conversion en km/h
+        _speed = (position.speed * 3.6).clamp(0, 400);
+
+        if (_speed > _maxSpeed) {
+          _maxSpeed = _speed;
+        }
+      });
+    });
   }
-
 
   @override
   void initState() {
     super.initState();
+
+    // Initialiser le GPS
+    _initGPS();
+
     _streamSubscriptions.add(
       userAccelerometerEventStream(samplingPeriod: sensorInterval).listen(
             (UserAccelerometerEvent event) {
           final now = event.timestamp;
-          setState(() {
-            _userAccelerometerEvent = event;
-            if (_userAccelerometerUpdateTime != null) {
-              final interval = now.difference(_userAccelerometerUpdateTime!);
-              if (interval > _ignoreDuration) {
-                _userAccelerometerLastInterval = interval.inMilliseconds;
+
+          if (_lastAccelUpdate == null ||
+              now.difference(_lastAccelUpdate!).inMilliseconds >= 100) {
+            setState(() {
+              _userAccelerometerEvent = event;
+
+              // Calculer les valeurs positives pour chaque côté
+              // X : gauche (-) / droite (+)
+              if (event.x < 0) {
+                axis_left = event.x.abs().toStringAsFixed(1);
+                axis_right = "0.0";
+              } else {
+                axis_right = event.x.toStringAsFixed(1);
+                axis_left = "0.0";
               }
-            }
-          });
+
+              // Z : arrière (-) / face (+)
+              if (event.z < 0) {
+                axis_back = event.z.abs().toStringAsFixed(1);
+                axis_front = "0.0";
+              } else {
+                axis_front = event.z.toStringAsFixed(1);
+                axis_back = "0.0";
+              }
+
+              // Calculer l'accélération maximale
+              double totalAccel = (event.x.abs() + event.z.abs()) / 2;
+              if (totalAccel > _maxAcceleration) {
+                _maxAcceleration = totalAccel;
+              }
+
+
+              if (_userAccelerometerUpdateTime != null) {
+                final interval = now.difference(_userAccelerometerUpdateTime!);
+                if (interval > _ignoreDuration) {
+                  _userAccelerometerLastInterval = interval.inMilliseconds;
+                }
+              }
+            });
+            _lastAccelUpdate = now;
+          } else {
+            _userAccelerometerEvent = event;
+          }
           _userAccelerometerUpdateTime = now;
         },
         onError: (e) {
@@ -138,124 +229,311 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        backgroundColor: Colors.black,
+        elevation: 0,
+        title: Text(
+          widget.title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w300,
+            letterSpacing: 2,
+          ),
+        ),
+        centerTitle: true,
       ),
       body: SafeArea(
-        child: Column(
-          children: <Widget>[
-          // chrono
-          Expanded(
-              flex: 3,
-              child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black,
+                Colors.grey.shade900,
+              ],
+            ),
+          ),
+          child: Column(
+            children: <Widget>[
+              // Compteur de vitesse principal - Style BMW
+              Expanded(
+                flex: 3,
+                child: Center(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Cercle extérieur décoratif
+                      Container(
+                        width: 280,
+                        height: 280,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.blue.shade700.withOpacity(0.3),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      // Cercle intérieur
+                      Container(
+                        width: 260,
+                        height: 260,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.grey.shade900,
+                              Colors.black,
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.shade700.withOpacity(0.2),
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Vitesse
+                            Text(
+                              _speed.toInt().toString(),
+                              style: TextStyle(
+                                fontSize: 80,
+                                fontWeight: FontWeight.w200,
+                                color: Colors.blue.shade400,
+                                height: 1.0,
+                              ),
+                            ),
+                            Text(
+                              'km/h',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.blue.shade300,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            // Chronomètre
+                            Text(
                               _formatTime(_stopwatch.elapsedMilliseconds),
                               style: const TextStyle(
-                                fontSize: 60.0,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.white70,
                                 fontFamily: 'Courier',
-                              )
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20,),
-                      // accelerometre
-                      Text(
-                        'X: ${_userAccelerometerEvent?.x.toStringAsFixed(1) ?? '?'}',
-                        style: const TextStyle(fontSize: 20),
-                      ),
-                      Text(
-                        'Z: ${_userAccelerometerEvent?.z.toStringAsFixed(1) ?? '?'}',
-                        style: const TextStyle(fontSize: 20),
-                      ),
-                      const SizedBox(height: 8,),
-                      // start and stop img button
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 120,
-                            height: 120,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                if (!_isBtnVisible)
-                                  GestureDetector(
-                                    onTap: () {
-                                      _startStopwatch();
-                                      setState(() {
-                                        _isBtnVisible = true;
-                                      });
-                                    },
-                                    child: Image.asset(
-                                      'assets/images/green_btn.png',
-                                      width: 120,
-                                      height: 120,
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                                if (_isBtnVisible)
-                                  GestureDetector(
-                                    onTap: () {
-                                      _stopStopwatch();
-                                      setState(() {
-                                        _isBtnVisible = false;
-                                      });
-                                    },
-                                    child: Image.asset(
-                                      'assets/images/red_btn.png',
-                                      width: 120,
-                                      height: 120,
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                          // Bouton Reset
-                          GestureDetector(
-                            onTap: _resetStopwatch,
-                            child: Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[400],
-                                shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.restart_alt, size: 30),
                             ),
-                          )
-                        ],
-                      )
+                          ],
+                        ),
+                      ),
                     ],
-                  )
-              )
+                  ),
+                ),
+              ),
+
+              // Boutons de contrôle - Style minimaliste
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Bouton Start/Stop avec images
+                    GestureDetector(
+                      onTap: () {
+                        if (!_isBtnVisible) {
+                          _startStopwatch();
+                          setState(() {
+                            _isBtnVisible = true;
+                          });
+                        } else {
+                          _stopStopwatch();
+                          setState(() {
+                            _isBtnVisible = false;
+                          });
+                        }
+                      },
+                      child: Container(
+                        width: 70,
+                        height: 70,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: (_isBtnVisible ? Colors.red : Colors.green).withOpacity(0.4),
+                              blurRadius: 15,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          _isBtnVisible ? 'assets/images/red_btn.png' : 'assets/images/green_btn.png',
+                          width: 70,
+                          height: 70,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 30),
+                    // Bouton Reset
+                    GestureDetector(
+                      onTap: () {
+                        _resetStopwatch();
+                        setState(() {
+                          _maxSpeed = 0;
+                          _maxAcceleration = 0;
+                        });
+                      },
+                      child: Container(
+                        width: 55,
+                        height: 55,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.grey.shade800,
+                          border: Border.all(
+                            color: Colors.grey.shade700,
+                            width: 1,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.restart_alt,
+                          size: 28,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Affichage des G-forces avec modèle 3D
+              Expanded(
+                flex: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    children: [
+                      // Titre G-Forces
+                      Text(
+                        'G-FORCES',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.grey.shade600,
+                          letterSpacing: 3,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Affichage Face
+                      _buildBMWAccelerationDisplay("FACE", axis_front, Colors.blue.shade400),
+                      const SizedBox(height: 8),
+
+                      // Ligne : Gauche - Modèle 3D - Droite
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // Gauche
+                            Expanded(
+                              flex: 1,
+                              child: _buildBMWAccelerationDisplay("G", axis_left, Colors.orange.shade400),
+                            ),
+
+                            // Modèle 3D au centre
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.grey.shade800,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Flutter3DViewer(
+                                    enableTouch: true,
+                                    controller: controller,
+                                    src: 'assets/models/lambo_car.glb',
+                                    onProgress: (double progressValue) {
+                                      debugPrint('Chargement: ${(progressValue * 100).toInt()}%');
+                                    },
+                                    onError: (String error) {
+                                      debugPrint('Erreur 3D: $error');
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            // Droite
+                            Expanded(
+                              flex: 1,
+                              child: _buildBMWAccelerationDisplay("D", axis_right, Colors.orange.shade400),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+                      // Arrière
+                      _buildBMWAccelerationDisplay("ARRIÈRE", axis_back, Colors.red.shade400),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          // modele 3d
-          Expanded(
-              flex: 2,
-              child: Flutter3DViewer(
-                enableTouch: true,
-                controller: controller,
-                src: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-                onProgress: (double progressValue) {
-                  debugPrint('chargement du modele: $progressValue');
-                },
-                onError: (String error) {
-                  debugPrint('erreur: $error');
-                },
-              )
+        ),
+      ),
+    );
+  }
+
+  // Widget d'affichage style BMW minimaliste
+  Widget _buildBMWAccelerationDisplay(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade900.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.grey.shade800,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w400,
+              color: Colors.grey.shade500,
+              letterSpacing: 1,
+            ),
           ),
-        ]
-      )
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w300,
+              color: color,
+              fontFamily: 'Courier',
+            ),
+          ),
+        ],
       ),
     );
   }
