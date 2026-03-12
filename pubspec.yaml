@@ -40,6 +40,8 @@ dependencies:
   geolocator: ^14.0.2
   sensors_plus: ^7.0.0
   flutter_3d_controller: ^2.3.0
+  http: ^1.2.0
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

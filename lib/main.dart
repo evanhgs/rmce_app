@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:rmce_app/pages/friends_page.dart';
 import 'package:rmce_app/pages/home_page.dart';
 import 'package:rmce_app/pages/map_page.dart';
+import 'package:rmce_app/pages/settings_page.dart';
 import 'package:rmce_app/pages/top_page.dart';
 
 void main() {
@@ -38,7 +38,7 @@ class _RootPageState extends State<RootPage> {
     MyHomePage(title: "Chrono"),
     MapPage(title: "Map"),
     TopPage(title: "Classement"),
-    FriendsPage(title: "Ami(e)s"),
+    SettingsPage(title: "Réglages"),
   ];
 
   @override
@@ -56,7 +56,7 @@ class _RootPageState extends State<RootPage> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Chrono', backgroundColor: Colors.black12),
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map',),
           BottomNavigationBarItem(icon: Icon(Icons.score), label: 'Classement'),
-          BottomNavigationBarItem(icon: Icon(Icons.face), label: 'Ami(e)s'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Réglages'),
         ],
       ),
     );
