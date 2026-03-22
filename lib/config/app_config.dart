@@ -29,6 +29,11 @@ class AppConfig {
     defaultValue: 'http://10.0.2.2:5000', // fallback émulateur Android
   );
 
+  static const String _geoServiceUrl = String.fromEnvironment(
+    'GEO_SERVICE_URL',
+    defaultValue: 'ws://10.0.2.2:8080', // fallback émulateur Android
+  );
+
   // ─── Accesseurs publics ──────────────────────────────────────────────────────
 
   /// Environnement actuel : [Environnement.dev] ou [Environnement.prod]
@@ -40,6 +45,9 @@ class AppConfig {
 
   /// URL de base de l'API Rust (sans slash final)
   static String get apiBaseUrl => _apiBaseUrl;
+
+  /// URL WebSocket du geo-service (sans slash final)
+  static String get geoServiceUrl => _geoServiceUrl;
 
   /// Nom affiché dans les logs / debug banner
   static String get appLabel => isDev ? 'rmce_app [DEV]' : 'rmce_app';
