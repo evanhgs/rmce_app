@@ -6,19 +6,16 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/gps_service.dart';
 
-
 class MapPage extends StatefulWidget {
   final String title;
 
   const MapPage({super.key, required this.title});
-
 
   @override
   State<MapPage> createState() => _MapPageState();
 }
 
 class _MapPageState extends State<MapPage> {
-
   final MapController _mapController = MapController();
   final GPSService _gpsService = GPSService();
 
@@ -33,7 +30,6 @@ class _MapPageState extends State<MapPage> {
   @override
   void initState() {
     super.initState();
-
     _gpsService.init();
 
     _speedSubscription = _gpsService.speedStream.listen((speedData) {
@@ -41,27 +37,21 @@ class _MapPageState extends State<MapPage> {
         setState(() {
           _currentSpeed = speedData.speed;
           _maxSpeed = speedData.maxSpeed;
-          LatLng newPosition = LatLng(speedData.latitude, speedData.longitude);
+          final newPosition = LatLng(speedData.latitude, speedData.longitude);
 
-          // Calculer la direction (heading) basée sur le mouvement précédent
           if (_previousPosition != null) {
-            final distance = Distance().as(LengthUnit.Meter, _previousPosition!, newPosition);
-            if (distance > 0.001) { // Éviter les calculs avec des positions identiques
+            final distance =
+                Distance().as(LengthUnit.Meter, _previousPosition!, newPosition);
+            if (distance > 0.001) {
               final latDiff = newPosition.latitude - _previousPosition!.latitude;
               final lngDiff = newPosition.longitude - _previousPosition!.longitude;
               _heading = math.atan2(lngDiff, latDiff) * (180 / math.pi);
             }
           }
           _previousPosition = newPosition;
+          _userPosition = newPosition;
 
-          if (_userPosition == null) {
-            _userPosition = newPosition;
-          } else {
-            _userPosition = newPosition;
-          }
-
-          // Auto-center la première fois
-          if (_isFirstUpdate && _userPosition != null) {
+          if (_isFirstUpdate) {
             _mapController.move(_userPosition!, 18.0);
             _isFirstUpdate = false;
           }
@@ -83,11 +73,13 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _zoomIn() {
-    _mapController.move(_mapController.camera.center, _mapController.camera.zoom + 1.0);
+    _mapController.move(
+        _mapController.camera.center, _mapController.camera.zoom + 1.0);
   }
 
   void _zoomOut() {
-    _mapController.move(_mapController.camera.center, _mapController.camera.zoom - 1.0);
+    _mapController.move(
+        _mapController.camera.center, _mapController.camera.zoom - 1.0);
   }
 
   @override
@@ -109,29 +101,26 @@ class _MapPageState extends State<MapPage> {
       ),
       body: Stack(
         children: [
-          // Map
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(
-              initialCenter: const LatLng(48.8566, 2.3522),
+            options: const MapOptions(
+              initialCenter: LatLng(48.8566, 2.3522),
               initialZoom: 13.0,
               minZoom: 5.0,
               maxZoom: 19.0,
             ),
             children: [
               TileLayer(
-                // Utiliser CartoDB qui est plus stable et maintenu
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
                 userAgentPackageName: 'rmce_app.evanhgs.fr',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 maxZoom: 19,
-                minZoom: 1,
-                additionalOptions: {
+                additionalOptions: const {
                   'attribution':
-                    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                      '&copy; OpenStreetMap contributors &copy; CARTO',
                 },
               ),
-              // Marqueur utilisateur avec triangle pointant la direction
               if (_userPosition != null)
                 MarkerLayer(
                   markers: [
@@ -144,12 +133,10 @@ class _MapPageState extends State<MapPage> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Triangle pointant vers le haut (direction)
                             CustomPaint(
                               size: const Size(50, 50),
                               painter: TrianglePainter(),
                             ),
-                            // Cercle au centre pour la localisation précise
                             Container(
                               width: 12,
                               height: 12,
@@ -158,7 +145,8 @@ class _MapPageState extends State<MapPage> {
                                 color: Colors.white,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.blue.shade400.withOpacity(0.6),
+                                    color: Colors.blue.shade400
+                                        .withValues(alpha: 0.6),
                                     blurRadius: 8,
                                     spreadRadius: 2,
                                   ),
@@ -173,8 +161,6 @@ class _MapPageState extends State<MapPage> {
                 ),
             ],
           ),
-
-          // Panneau de vitesse
           Positioned(
             top: 16,
             right: 16,
@@ -182,15 +168,15 @@ class _MapPageState extends State<MapPage> {
               width: 140,
               height: 160,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85),
+                color: Colors.black.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Colors.blue.shade700.withOpacity(0.4),
+                  color: Colors.blue.shade700.withValues(alpha: 0.4),
                   width: 1,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.blue.shade700.withOpacity(0.2),
+                    color: Colors.blue.shade700.withValues(alpha: 0.2),
                     blurRadius: 15,
                     spreadRadius: 2,
                   ),
@@ -240,14 +226,11 @@ class _MapPageState extends State<MapPage> {
               ),
             ),
           ),
-
-          // Boutons de contrôle
           Positioned(
             bottom: 24,
             right: 16,
             child: Column(
               children: [
-                // Bouton Zoom In
                 GestureDetector(
                   onTap: _zoomIn,
                   child: Container(
@@ -256,20 +239,12 @@ class _MapPageState extends State<MapPage> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.grey.shade800,
-                      border: Border.all(
-                        color: Colors.grey.shade700,
-                        width: 1,
-                      ),
+                      border: Border.all(color: Colors.grey.shade700, width: 1),
                     ),
-                    child: Icon(
-                      Icons.add,
-                      color: Colors.grey.shade400,
-                      size: 28,
-                    ),
+                    child: Icon(Icons.add, color: Colors.grey.shade400, size: 28),
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Bouton Zoom Out
                 GestureDetector(
                   onTap: _zoomOut,
                   child: Container(
@@ -278,20 +253,13 @@ class _MapPageState extends State<MapPage> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.grey.shade800,
-                      border: Border.all(
-                        color: Colors.grey.shade700,
-                        width: 1,
-                      ),
+                      border: Border.all(color: Colors.grey.shade700, width: 1),
                     ),
-                    child: Icon(
-                      Icons.remove,
-                      color: Colors.grey.shade400,
-                      size: 28,
-                    ),
+                    child:
+                        Icon(Icons.remove, color: Colors.grey.shade400, size: 28),
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Bouton Center
                 GestureDetector(
                   onTap: _centerOnLocation,
                   child: Container(
@@ -300,23 +268,18 @@ class _MapPageState extends State<MapPage> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.blue.shade700,
-                      border: Border.all(
-                        color: Colors.blue.shade600,
-                        width: 1,
-                      ),
+                      border:
+                          Border.all(color: Colors.blue.shade600, width: 1),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.shade700.withOpacity(0.4),
+                          color: Colors.blue.shade700.withValues(alpha: 0.4),
                           blurRadius: 10,
                           spreadRadius: 2,
                         ),
                       ],
                     ),
-                    child: Icon(
-                      Icons.my_location,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+                    child: const Icon(Icons.my_location,
+                        color: Colors.white, size: 24),
                   ),
                 ),
               ],
@@ -328,34 +291,30 @@ class _MapPageState extends State<MapPage> {
   }
 }
 
-/// Custom painter pour dessiner un triangle pointant vers le haut (style Google Maps)
 class TrianglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue.shade400
-      ..style = PaintingStyle.fill;
+    final path = ui.Path()
+      ..moveTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
 
-    final path = ui.Path();
-    // Pointe vers le haut
-    path.moveTo(size.width / 2, 0); // Sommet en haut
-    path.lineTo(size.width, size.height); // Coin bas droit
-    path.lineTo(0, size.height); // Coin bas gauche
-    path.close();
-
-    canvas.drawPath(path, paint);
-
-    // Bordure blanche pour meilleure visibilité
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawPath(path, borderPaint);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.blue.shade400
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
   }
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
-
-

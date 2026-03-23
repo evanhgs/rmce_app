@@ -15,18 +15,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _isLoggedIn = false;
   Map<String, dynamic>? _user;
-  bool _showLogin = true; // bascule entre connexion et inscription
+  bool _showLogin = true;
 
   bool _isLoading = false;
   String? _errorMessage;
   String? _successMessage;
 
-  // Formulaire connexion
   final _loginEmailController = TextEditingController();
   final _loginPasswordController = TextEditingController();
   bool _loginPasswordVisible = false;
 
-  // Formulaire inscription
   final _registerUsernameController = TextEditingController();
   final _registerEmailController = TextEditingController();
   final _registerPasswordController = TextEditingController();
@@ -188,7 +186,6 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           const SizedBox(height: 16),
 
-          // Avatar + info
           Center(
             child: Column(
               children: [
@@ -234,7 +231,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 40),
 
-          // Carte infos
           _carteInfos('COMPTE', [
             _ligneInfo(Icons.badge_outlined, 'Identifiant', '#$userId'),
             _ligneInfo(Icons.person_outline, 'Pseudo', username),
@@ -243,7 +239,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 32),
 
-          // Bouton déconnexion
           SizedBox(
             width: double.infinity,
             child: GestureDetector(
@@ -344,7 +339,6 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           const SizedBox(height: 24),
 
-          // Icône
           Container(
             width: 70,
             height: 70,
@@ -358,7 +352,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 24),
 
-          // Bascule connexion / inscription
           Container(
             decoration: BoxDecoration(
               color: Colors.grey.shade900,
@@ -375,7 +368,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 24),
 
-          // Message succès
           if (_successMessage != null)
             Container(
               width: double.infinity,
@@ -392,7 +384,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
-          // Message erreur
           if (_errorMessage != null)
             Container(
               width: double.infinity,
@@ -409,7 +400,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
-          // Formulaire actif
           _showLogin ? _formulaireConnexion() : _formulaireInscription(),
         ],
       ),

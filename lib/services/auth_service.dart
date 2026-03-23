@@ -10,11 +10,9 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'auth_user';
 
-  /// Log une requête sortante (uniquement en dev)
   void _logRequest(String method, String url, Map<String, dynamic> body) {
     if (AppConfig.isDev) {
       debugPrint('┌── [AuthService] $method $url');
@@ -22,7 +20,6 @@ class AuthService {
     }
   }
 
-  /// Connexion — retourne {'success': true, 'user': {...}} ou {'success': false, 'message': '...'}
   Future<Map<String, dynamic>> login(String email, String password) async {
     final url = '${AppConfig.apiBaseUrl}/auth/login';
     _logRequest('POST', url, {'email': email, 'password': '***'});
@@ -40,7 +37,8 @@ class AuthService {
         await _saveUser(data['user'] as Map<String, dynamic>);
         return {'success': true, 'user': data['user']};
       } else {
-        final message = data['message'] ?? data['error'] ?? 'Identifiants incorrects';
+        final message =
+            data['message'] ?? data['error'] ?? 'Identifiants incorrects';
         return {'success': false, 'message': message.toString()};
       }
     } catch (e) {
@@ -48,20 +46,17 @@ class AuthService {
     }
   }
 
-  /// Inscription — retourne {'success': true} ou {'success': false, 'message': '...'}
   Future<Map<String, dynamic>> register(
       String username, String email, String password) async {
     final url = '${AppConfig.apiBaseUrl}/auth/register';
-    _logRequest('POST', url, {'username': username, 'email': email, 'password': '***'});
+    _logRequest(
+        'POST', url, {'username': username, 'email': email, 'password': '***'});
     try {
       final response = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'username': username,
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode(
+            {'username': username, 'email': email, 'password': password}),
       );
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -69,7 +64,9 @@ class AuthService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true};
       } else {
-        final message = data['message'] ?? data['error'] ?? 'Erreur lors de l\'inscription';
+        final message = data['message'] ??
+            data['error'] ??
+            'Erreur lors de l\'inscription';
         return {'success': false, 'message': message.toString()};
       }
     } catch (e) {
@@ -77,26 +74,22 @@ class AuthService {
     }
   }
 
-  /// Déconnexion — supprime le token et les données utilisateur localement
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
   }
 
-  /// Vérifie si un token est stocké localement
   Future<bool> isLoggedIn() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
   }
 
-  /// Récupère le token JWT stocké
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
   }
 
-  /// Récupère les infos utilisateur stockées
   Future<Map<String, dynamic>?> getUser() async {
     final prefs = await SharedPreferences.getInstance();
     final userJson = prefs.getString(_userKey);
@@ -116,4 +109,3 @@ class AuthService {
     await prefs.setString(_userKey, jsonEncode(user));
   }
 }
-

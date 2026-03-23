@@ -422,7 +422,6 @@ class _FriendsPageState extends State<FriendsPage>
           ),
           child: Column(
             children: [
-              // Handle
               Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 6),
                 child: Container(
@@ -434,7 +433,6 @@ class _FriendsPageState extends State<FriendsPage>
                   ),
                 ),
               ),
-              // Header
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
@@ -455,7 +453,6 @@ class _FriendsPageState extends State<FriendsPage>
                   ],
                 ),
               ),
-              // Tabs
               TabBar(
                 controller: _tabController,
                 indicatorColor: Colors.blue.shade400,
@@ -540,7 +537,6 @@ class _FriendsPageState extends State<FriendsPage>
       ),
       child: Row(
         children: [
-          // Avatar
           Stack(
             clipBehavior: Clip.none,
             children: [
@@ -611,7 +607,6 @@ class _FriendsPageState extends State<FriendsPage>
               ],
             ),
           ),
-          // Localiser
           if (loc != null)
             GestureDetector(
               onTap: () =>
@@ -691,7 +686,6 @@ class _FriendsPageState extends State<FriendsPage>
                   fontSize: 15),
             ),
           ),
-          // Accepter
           GestureDetector(
             onTap: () async {
               await _friendsService.acceptFriend(req.friendshipId);
@@ -702,7 +696,6 @@ class _FriendsPageState extends State<FriendsPage>
                 Icons.check, Colors.green.shade400, Colors.green.shade700),
           ),
           const SizedBox(width: 8),
-          // Refuser
           GestureDetector(
             onTap: () async {
               await _friendsService.rejectFriend(req.friendshipId);

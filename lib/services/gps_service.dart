@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 class SpeedData {
@@ -24,10 +25,7 @@ class SpeedData {
 class GPSService {
   static final GPSService _instance = GPSService._internal();
 
-  factory GPSService() {
-    return _instance;
-  }
-
+  factory GPSService() => _instance;
   GPSService._internal();
 
   StreamSubscription<Position>? _positionStream;
@@ -39,11 +37,9 @@ class GPSService {
   double _accuracy = 0.0;
   bool _isInitialized = false;
 
-  // StreamController pour les updates de vitesse
   final _speedController = StreamController<SpeedData>.broadcast();
 
   Stream<SpeedData> get speedStream => _speedController.stream;
-
   double get currentSpeed => _currentSpeed;
   double get maxSpeed => _maxSpeed;
   double get latitude => _latitude;
@@ -52,49 +48,38 @@ class GPSService {
   double get accuracy => _accuracy;
   bool get isInitialized => _isInitialized;
 
-  void resetMaxSpeed() {
-    _maxSpeed = 0.0;
-  }
+  void resetMaxSpeed() => _maxSpeed = 0.0;
 
   Future<void> init() async {
     if (_isInitialized) return;
 
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    // Vérifier si le service de localisation est activé
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      print('Service de localisation désactivé');
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      debugPrint('[GPS] Service de localisation désactivé');
       return;
     }
 
-    // Vérifier les permissions
-    permission = await Geolocator.checkPermission();
+    var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        print('Permission de localisation refusée');
+        debugPrint('[GPS] Permission refusée');
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      print('Permission de localisation refusée définitivement');
+      debugPrint('[GPS] Permission refusée définitivement');
       return;
     }
 
     _isInitialized = true;
 
-    const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
-    );
-
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+      ),
     ).listen((Position position) {
-      // Conversion m/s en km/h
       _currentSpeed = (position.speed * 3.6).clamp(0, 400);
       _latitude = position.latitude;
       _longitude = position.longitude;
@@ -105,7 +90,6 @@ class GPSService {
         _maxSpeed = _currentSpeed;
       }
 
-      // Émettre les données
       _speedController.add(SpeedData(
         speed: _currentSpeed,
         maxSpeed: _maxSpeed,
@@ -123,4 +107,3 @@ class GPSService {
     _speedController.close();
   }
 }
-

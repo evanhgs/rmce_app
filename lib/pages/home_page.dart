@@ -5,7 +5,6 @@ import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../services/gps_service.dart';
 
-
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
 
@@ -16,20 +15,13 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  static const Duration _ignoreDuration = Duration(milliseconds: 20);
-
   Timer? _timer;
-  UserAccelerometerEvent? _userAccelerometerEvent;
-
-  DateTime? _userAccelerometerUpdateTime;
-
-  int? _userAccelerometerLastInterval;
 
   final _streamSubscriptions = <StreamSubscription<dynamic>>[];
   final Stopwatch _stopwatch = Stopwatch();
 
-  Duration sensorInterval = SensorInterval.uiInterval;
-  Flutter3DController controller = Flutter3DController();
+  final Duration sensorInterval = SensorInterval.uiInterval;
+  final Flutter3DController controller = Flutter3DController();
 
   bool _isBtnVisible = false;
 
@@ -40,18 +32,17 @@ class _MyHomePageState extends State<MyHomePage> {
 
   DateTime? _lastAccelUpdate;
 
-  // Service GPS singleton
   final GPSService _gpsService = GPSService();
   StreamSubscription<SpeedData>? _speedSubscription;
 
   String _formatTime(int ms) {
-    int hundreds = (ms / 10).truncate();
-    int seconds = (hundreds / 100).truncate();
-    int minutes = (seconds / 60).truncate();
+    final hundreds = (ms / 10).truncate();
+    final seconds = (hundreds / 100).truncate();
+    final minutes = (seconds / 60).truncate();
 
-    String mnStr = (minutes % 60).toString().padLeft(2, '0');
-    String sStr = (seconds % 60).toString().padLeft(2, '0');
-    String hStr = (hundreds % 100).toString().padLeft(2, '0');
+    final mnStr = (minutes % 60).toString().padLeft(2, '0');
+    final sStr = (seconds % 60).toString().padLeft(2, '0');
+    final hStr = (hundreds % 100).toString().padLeft(2, '0');
 
     return "$mnStr:$sStr:$hStr";
   }
@@ -59,8 +50,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void _startStopwatch() {
     if (!_stopwatch.isRunning) {
       _stopwatch.start();
-      _timer = Timer.periodic(
-          const Duration(milliseconds: 50), (timer) {
+      _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
         setState(() {});
       });
     }
@@ -82,37 +72,23 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-  void dispose() {
-    _timer?.cancel();
-    _speedSubscription?.cancel();
-    super.dispose();
-    for (final subscription in _streamSubscriptions) {
-      subscription.cancel();
-    }
-  }
-
-
-  @override
   void initState() {
     super.initState();
 
     _gpsService.init();
 
-    _speedSubscription = _gpsService.speedStream.listen((speedData) {
-      setState(() {
-      });
+    _speedSubscription = _gpsService.speedStream.listen((_) {
+      setState(() {});
     });
 
     _streamSubscriptions.add(
       userAccelerometerEventStream(samplingPeriod: sensorInterval).listen(
-            (UserAccelerometerEvent event) {
+        (UserAccelerometerEvent event) {
           final now = event.timestamp;
 
           if (_lastAccelUpdate == null ||
               now.difference(_lastAccelUpdate!).inMilliseconds >= 100) {
             setState(() {
-              _userAccelerometerEvent = event;
-
               // X : gauche (-) / droite (+)
               if (event.x < 0) {
                 axis_left = event.x.abs().toStringAsFixed(1);
@@ -130,38 +106,35 @@ class _MyHomePageState extends State<MyHomePage> {
                 axis_front = event.z.toStringAsFixed(1);
                 axis_back = "0.0";
               }
-
-              // accélération max
-              double totalAccel = (event.x.abs() + event.z.abs()) / 2;
-
-
-              if (_userAccelerometerUpdateTime != null) {
-                final interval = now.difference(_userAccelerometerUpdateTime!);
-                if (interval > _ignoreDuration) {
-                  _userAccelerometerLastInterval = interval.inMilliseconds;
-                }
-              }
             });
             _lastAccelUpdate = now;
-          } else {
-            _userAccelerometerEvent = event;
           }
-          _userAccelerometerUpdateTime = now;
         },
         onError: (e) {
           showDialog(
-              context: context,
-              builder: (context) {
-                return const AlertDialog(
-                  title: Text("Sensor Not Found"),
-                  content: Text(
-                      "It seems that your device doesn't support User Accelerometer Sensor"),
-                );
-              });
+            context: context,
+            builder: (context) {
+              return const AlertDialog(
+                title: Text("Sensor Not Found"),
+                content: Text(
+                    "It seems that your device doesn't support User Accelerometer Sensor"),
+              );
+            },
+          );
         },
         cancelOnError: true,
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _speedSubscription?.cancel();
+    for (final subscription in _streamSubscriptions) {
+      subscription.cancel();
+    }
+    super.dispose();
   }
 
   @override
@@ -187,48 +160,39 @@ class _MyHomePageState extends State<MyHomePage> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Colors.black,
-                Colors.grey.shade900,
-              ],
+              colors: [Colors.black, Colors.grey.shade900],
             ),
           ),
           child: Column(
             children: <Widget>[
-              // Compteur de vitesse principal - Style BMW
               Expanded(
                 flex: 3,
                 child: Center(
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Cercle extérieur décoratif
                       Container(
                         width: 280,
                         height: 280,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.blue.shade700.withOpacity(0.3),
+                            color: Colors.blue.shade700.withValues(alpha: 0.3),
                             width: 2,
                           ),
                         ),
                       ),
-                      // Cercle intérieur
                       Container(
                         width: 260,
                         height: 260,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
-                            colors: [
-                              Colors.grey.shade900,
-                              Colors.black,
-                            ],
+                            colors: [Colors.grey.shade900, Colors.black],
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.blue.shade700.withOpacity(0.2),
+                              color: Colors.blue.shade700.withValues(alpha: 0.2),
                               blurRadius: 20,
                               spreadRadius: 5,
                             ),
@@ -237,7 +201,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // Vitesse
                             Text(
                               _gpsService.currentSpeed.toInt().toString(),
                               style: TextStyle(
@@ -257,7 +220,6 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                             ),
                             const SizedBox(height: 20),
-                            // Chronomètre
                             Text(
                               _formatTime(_stopwatch.elapsedMilliseconds),
                               style: const TextStyle(
@@ -274,26 +236,19 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
               ),
-
-              // Boutons de contrôle - Style minimaliste
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 20.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Bouton Start/Stop avec images
                     GestureDetector(
                       onTap: () {
                         if (!_isBtnVisible) {
                           _startStopwatch();
-                          setState(() {
-                            _isBtnVisible = true;
-                          });
+                          setState(() => _isBtnVisible = true);
                         } else {
                           _stopStopwatch();
-                          setState(() {
-                            _isBtnVisible = false;
-                          });
+                          setState(() => _isBtnVisible = false);
                         }
                       },
                       child: Container(
@@ -303,14 +258,17 @@ class _MyHomePageState extends State<MyHomePage> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: (_isBtnVisible ? Colors.red : Colors.green).withOpacity(0.4),
+                              color: (_isBtnVisible ? Colors.red : Colors.green)
+                                  .withValues(alpha: 0.4),
                               blurRadius: 15,
                               spreadRadius: 2,
                             ),
                           ],
                         ),
                         child: Image.asset(
-                          _isBtnVisible ? 'assets/images/red_btn.png' : 'assets/images/green_btn.png',
+                          _isBtnVisible
+                              ? 'assets/images/red_btn.png'
+                              : 'assets/images/green_btn.png',
                           width: 70,
                           height: 70,
                           fit: BoxFit.contain,
@@ -318,13 +276,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     ),
                     const SizedBox(width: 30),
-                    // Bouton Reset
                     GestureDetector(
                       onTap: () {
                         _resetStopwatch();
-                        setState(() {
-                          _gpsService.resetMaxSpeed();
-                        });
+                        setState(() => _gpsService.resetMaxSpeed());
                       },
                       child: Container(
                         width: 55,
@@ -347,15 +302,12 @@ class _MyHomePageState extends State<MyHomePage> {
                   ],
                 ),
               ),
-
-              // Affichage des G-forces avec modèle 3D
               Expanded(
                 flex: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
                     children: [
-                      // Titre G-Forces
                       Text(
                         'G-FORCES',
                         style: TextStyle(
@@ -366,23 +318,16 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ),
                       const SizedBox(height: 8),
-
-                      // Affichage Face
-                      _buildBMWAccelerationDisplay("FACE", axis_front, Colors.blue.shade400),
+                      _buildAccelDisplay("FACE", axis_front, Colors.blue.shade400),
                       const SizedBox(height: 8),
-
-                      // Ligne : Gauche - Modèle 3D - Droite
                       Expanded(
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            // Gauche
                             Expanded(
                               flex: 1,
-                              child: _buildBMWAccelerationDisplay("G", axis_left, Colors.orange.shade400),
+                              child: _buildAccelDisplay("G", axis_left, Colors.orange.shade400),
                             ),
-
-                            // Modèle 3D au centre
                             Expanded(
                               flex: 2,
                               child: Container(
@@ -410,19 +355,15 @@ class _MyHomePageState extends State<MyHomePage> {
                                 ),
                               ),
                             ),
-
-                            // Droite
                             Expanded(
                               flex: 1,
-                              child: _buildBMWAccelerationDisplay("D", axis_right, Colors.orange.shade400),
+                              child: _buildAccelDisplay("D", axis_right, Colors.orange.shade400),
                             ),
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 8),
-                      // Arrière
-                      _buildBMWAccelerationDisplay("ARRIÈRE", axis_back, Colors.red.shade400),
+                      _buildAccelDisplay("ARRIÈRE", axis_back, Colors.red.shade400),
                       const SizedBox(height: 8),
                     ],
                   ),
@@ -435,17 +376,13 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // Widget d'affichage style BMW minimaliste
-  Widget _buildBMWAccelerationDisplay(String label, String value, Color color) {
+  Widget _buildAccelDisplay(String label, String value, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.grey.shade900.withOpacity(0.5),
+        color: Colors.grey.shade900.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.grey.shade800,
-          width: 1,
-        ),
+        border: Border.all(color: Colors.grey.shade800, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
