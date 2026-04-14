@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../core/permissions/permission_coordinator.dart';
 import '../features/auth/auth_controller.dart';
@@ -23,6 +24,7 @@ import '../features/run_session/chrono_dashboard_page.dart';
 import '../features/run_session/run_session_controller.dart';
 import '../features/run_session/run_upload_queue_service.dart';
 import '../features/run_session/scores_repository.dart';
+import '../services/gps_service.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -43,6 +45,10 @@ class _AppShellState extends State<AppShell> {
   late final ProfileController _profileController;
 
   int _currentIndex = 0;
+  final GPSService _gpsService = GPSService();
+  final PermissionCoordinator _permissionCoordinator = PermissionCoordinator();
+  bool _isBootstrapping = true;
+  String? _startupStatusMessage;
 
   @override
   void initState() {
@@ -78,16 +84,91 @@ class _AppShellState extends State<AppShell> {
     );
 
     _authController.state.addListener(_handleAuthChanged);
-    _bootstrap();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bootstrap();
+    });
   }
 
   Future<void> _bootstrap() async {
+    setState(() {
+      _isBootstrapping = true;
+      _startupStatusMessage = 'Préparation de l’application...';
+    });
+
+    final startupPermissions =
+        await _permissionCoordinator.requestStartupPermissions();
+    final locationServiceEnabled =
+        await _permissionCoordinator.isLocationServiceEnabled();
+
+    if (startupPermissions.locationGranted) {
+      setState(() {
+        _startupStatusMessage = 'Initialisation de la localisation...';
+      });
+      await _gpsService.init();
+      await _gpsService.refreshCurrentPosition();
+    } else {
+      final permanentlyDenied =
+          await _permissionCoordinator.isLocationPermanentlyDenied();
+      if (mounted && permanentlyDenied) {
+        await _showLocationSettingsDialog();
+      }
+    }
+
+    setState(() {
+      _startupStatusMessage = 'Chargement des données...';
+    });
     await _authController.initialize();
     await _runSessionController.initialize();
     await _postsController.load();
     await _leaderboardsController.loadGlobal();
     await _challengesController.load();
     await _loadPrivateData();
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isBootstrapping = false;
+      if (!startupPermissions.locationGranted) {
+        _startupStatusMessage =
+            'Localisation refusée. Autorise-la dans les réglages pour centrer la carte.';
+      } else if (!locationServiceEnabled) {
+        _startupStatusMessage =
+            'Le service de localisation du téléphone semble désactivé.';
+      } else if (!_gpsService.hasFix) {
+        _startupStatusMessage =
+            'Aucun fix GPS reçu pour l’instant. Vérifie le GPS du téléphone.';
+      } else {
+        _startupStatusMessage = null;
+      }
+    });
+  }
+
+  Future<void> _showLocationSettingsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Localisation requise'),
+          content: const Text(
+            'La permission de localisation semble bloquée. Ouvre les réglages Android pour l’autoriser.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Plus tard'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await openAppSettings();
+              },
+              child: const Text('Ouvrir les réglages'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _handleAuthChanged() async {
@@ -147,9 +228,57 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: pages,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: pages,
+          ),
+          if (_startupStatusMessage != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 16,
+              right: 16,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFD7DFEE)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isBootstrapping
+                            ? Icons.sync
+                            : Icons.location_off_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _startupStatusMessage!,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

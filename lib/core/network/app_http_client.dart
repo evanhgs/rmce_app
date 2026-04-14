@@ -116,7 +116,11 @@ class AppHttpClient {
           throw ApiException('Méthode HTTP non gérée: $method');
       }
     } catch (_) {
-      throw ApiException('Impossible de joindre le serveur.');
+      final message = AppConfig.usesLocalEmulatorNetwork
+          ? 'Impossible de joindre ${AppConfig.apiBaseUrl}. '
+          'Si vous testez sur un vrai téléphone, ne pointez pas vers 10.0.2.2.'
+          : 'Impossible de joindre ${AppConfig.apiBaseUrl}.';
+      throw ApiException(message);
     }
 
     if (response.statusCode == 401) {

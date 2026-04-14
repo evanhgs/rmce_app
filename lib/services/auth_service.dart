@@ -20,6 +20,15 @@ class AuthService {
     }
   }
 
+  String _networkErrorMessage() {
+    if (AppConfig.usesLocalEmulatorNetwork) {
+      return 'Impossible de joindre le serveur local ${AppConfig.apiBaseUrl}. '
+          'Sur un vrai téléphone, utilise les services distants ou un fichier '
+          '`.env.local.json` uniquement avec un émulateur Android.';
+    }
+    return 'Impossible de joindre le serveur ${AppConfig.apiBaseUrl}.';
+  }
+
   Future<Map<String, dynamic>> login(String email, String password) async {
     final url = '${AppConfig.apiBaseUrl}/auth/login';
     _logRequest('POST', url, {'email': email, 'password': '***'});
@@ -42,7 +51,7 @@ class AuthService {
         return {'success': false, 'message': message.toString()};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Impossible de joindre le serveur'};
+      return {'success': false, 'message': _networkErrorMessage()};
     }
   }
 
@@ -70,7 +79,7 @@ class AuthService {
         return {'success': false, 'message': message.toString()};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Impossible de joindre le serveur'};
+      return {'success': false, 'message': _networkErrorMessage()};
     }
   }
 

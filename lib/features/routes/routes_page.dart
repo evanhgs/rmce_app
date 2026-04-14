@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/utils/list_extensions.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/permissions/permission_coordinator.dart';
+import '../../services/gps_service.dart';
 import '../auth/auth_controller.dart';
 import '../challenges/challenges_controller.dart';
 import '../run_session/run_models.dart';
@@ -36,6 +40,8 @@ class RoutesPage extends StatefulWidget {
 
 class _RoutesPageState extends State<RoutesPage> {
   final MapController _mapController = MapController();
+  final GPSService _gpsService = GPSService();
+  final PermissionCoordinator _permissionCoordinator = PermissionCoordinator();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _liveNameController =
@@ -43,11 +49,67 @@ class _RoutesPageState extends State<RoutesPage> {
   final TextEditingController _liveDescriptionController =
       TextEditingController();
 
+  StreamSubscription<SpeedData>? _gpsSubscription;
   RoutesViewMode _mode = RoutesViewMode.explorer;
   bool _livePublic = false;
+  LatLng? _currentPosition;
+  double _currentZoom = 16;
+  String? _gpsMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _initLocation();
+    _gpsSubscription = _gpsService.speedStream.listen((data) {
+      _applyGpsData(data, keepCentered: true);
+    });
+  }
+
+  Future<void> _initLocation() async {
+    final granted = await _permissionCoordinator.ensureLocationPermissionForMaps();
+    if (!mounted) {
+      return;
+    }
+    if (!granted) {
+      setState(() {
+        _gpsMessage =
+            'La localisation n’est pas autorisée. Active-la pour centrer la carte.';
+      });
+      return;
+    }
+
+    await _gpsService.init();
+    final current = await _gpsService.refreshCurrentPosition();
+    if (current != null) {
+      _applyGpsData(current, keepCentered: true);
+    } else if (mounted) {
+      setState(() {
+        _gpsMessage =
+            'Position introuvable pour l’instant. Vérifie GPS et localisation.';
+      });
+    }
+  }
+
+  void _applyGpsData(
+    SpeedData data, {
+    required bool keepCentered,
+  }) {
+    final nextPosition = LatLng(data.latitude, data.longitude);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _currentPosition = nextPosition;
+      _gpsMessage = null;
+    });
+    if (keepCentered) {
+      _mapController.move(nextPosition, _currentZoom);
+    }
+  }
 
   @override
   void dispose() {
+    _gpsSubscription?.cancel();
     _nameController.dispose();
     _descriptionController.dispose();
     _liveNameController.dispose();
@@ -110,12 +172,18 @@ class _RoutesPageState extends State<RoutesPage> {
                       explorerController: widget.explorerController,
                       runSessionController: widget.runSessionController,
                       challengesController: widget.challengesController,
+                      currentPosition: _currentPosition,
+                      gpsMessage: _gpsMessage,
+                      onMapPositionChanged: _handleMapPositionChanged,
                     ),
                   RoutesViewMode.create => _CreateView(
                       mapController: _mapController,
                       controller: widget.composerController,
                       nameController: _nameController,
                       descriptionController: _descriptionController,
+                      currentPosition: _currentPosition,
+                      gpsMessage: _gpsMessage,
+                      onMapPositionChanged: _handleMapPositionChanged,
                       onRouteSaved: () => widget.explorerController.load(
                         userId: authState.user?['id'] as int?,
                       ),
@@ -126,6 +194,9 @@ class _RoutesPageState extends State<RoutesPage> {
                       liveNameController: _liveNameController,
                       liveDescriptionController: _liveDescriptionController,
                       livePublic: _livePublic,
+                      currentPosition: _currentPosition,
+                      gpsMessage: _gpsMessage,
+                      onMapPositionChanged: _handleMapPositionChanged,
                       onVisibilityChanged: (value) {
                         setState(() => _livePublic = value);
                       },
@@ -138,6 +209,13 @@ class _RoutesPageState extends State<RoutesPage> {
       },
     );
   }
+
+  void _handleMapPositionChanged(MapCamera camera, bool hasGesture) {
+    _currentZoom = camera.zoom;
+    if (hasGesture && _currentPosition != null) {
+      _mapController.move(_currentPosition!, _currentZoom);
+    }
+  }
 }
 
 class _ExplorerView extends StatelessWidget {
@@ -147,6 +225,9 @@ class _ExplorerView extends StatelessWidget {
     required this.explorerController,
     required this.runSessionController,
     required this.challengesController,
+    required this.currentPosition,
+    required this.gpsMessage,
+    required this.onMapPositionChanged,
   });
 
   final AuthState authState;
@@ -154,6 +235,9 @@ class _ExplorerView extends StatelessWidget {
   final RouteExplorerController explorerController;
   final RunSessionController runSessionController;
   final ChallengesController challengesController;
+  final LatLng? currentPosition;
+  final String? gpsMessage;
+  final void Function(MapCamera camera, bool hasGesture) onMapPositionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -183,50 +267,83 @@ class _ExplorerView extends StatelessWidget {
           children: [
             SizedBox(
               height: 260,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: FlutterMap(
-                  mapController: mapController,
-                  options: MapOptions(
-                    initialCenter: route?.polyline.firstOrNull ??
-                        const LatLng(48.8566, 2.3522),
-                    initialZoom: route == null ? 12 : 15,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      userAgentPackageName: 'rmce_app.evanhgs.fr',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                    ),
-                    if (polylines.isNotEmpty)
-                      PolylineLayer(polylines: polylines),
-                    if (route != null)
-                      MarkerLayer(
-                        markers: route.polyline
-                            .map(
-                              (point) => Marker(
-                                point: point,
-                                width: 12,
-                                height: 12,
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: FlutterMap(
+                      mapController: mapController,
+                      options: MapOptions(
+                        initialCenter: route?.polyline.firstOrNull ??
+                            currentPosition ??
+                            const LatLng(48.8566, 2.3522),
+                        initialZoom: route == null ? 12 : 15,
+                        onPositionChanged: onMapPositionChanged,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                          userAgentPackageName: 'rmce_app.evanhgs.fr',
+                          subdomains: const ['a', 'b', 'c', 'd'],
+                        ),
+                        if (polylines.isNotEmpty)
+                          PolylineLayer(polylines: polylines),
+                        if (currentPosition != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: currentPosition!,
+                                width: 18,
+                                height: 18,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: Theme.of(context).colorScheme.primary,
                                     shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      width: 2,
-                                    ),
+                                    border:
+                                        Border.all(color: Colors.white, width: 3),
                                   ),
                                 ),
                               ),
-                            )
-                            .toList(growable: false),
-                      ),
-                  ],
-                ),
+                            ],
+                          ),
+                        if (route != null)
+                          MarkerLayer(
+                            markers: route.polyline
+                                .map(
+                                  (point) => Marker(
+                                    point: point,
+                                    width: 12,
+                                    height: 12,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
+            if (gpsMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                gpsMessage!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 16),
             if (route != null)
               Card(
@@ -304,6 +421,9 @@ class _CreateView extends StatelessWidget {
     required this.controller,
     required this.nameController,
     required this.descriptionController,
+    required this.currentPosition,
+    required this.gpsMessage,
+    required this.onMapPositionChanged,
     required this.onRouteSaved,
   });
 
@@ -311,6 +431,9 @@ class _CreateView extends StatelessWidget {
   final RouteComposerController controller;
   final TextEditingController nameController;
   final TextEditingController descriptionController;
+  final LatLng? currentPosition;
+  final String? gpsMessage;
+  final void Function(MapCamera camera, bool hasGesture) onMapPositionChanged;
   final VoidCallback onRouteSaved;
 
   @override
@@ -323,62 +446,97 @@ class _CreateView extends StatelessWidget {
           children: [
             SizedBox(
               height: 280,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: FlutterMap(
-                  mapController: mapController,
-                  options: MapOptions(
-                    initialCenter: state.points.lastOrNull?.latLng ??
-                        const LatLng(48.8566, 2.3522),
-                    initialZoom: 14,
-                    onLongPress: (_, latLng) {
-                      controller.addPoint(
-                        RoutePathPoint(
-                          latitude: latLng.latitude,
-                          longitude: latLng.longitude,
-                        ),
-                      );
-                    },
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      userAgentPackageName: 'rmce_app.evanhgs.fr',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                    ),
-                    if (state.points.length >= 2)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: state.points.map((point) => point.latLng).toList(),
-                            strokeWidth: 5,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ],
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: FlutterMap(
+                      mapController: mapController,
+                      options: MapOptions(
+                        initialCenter: state.points.lastOrNull?.latLng ??
+                            currentPosition ??
+                            const LatLng(48.8566, 2.3522),
+                        initialZoom: 14,
+                        onPositionChanged: onMapPositionChanged,
+                        onLongPress: (_, latLng) {
+                          controller.addPoint(
+                            RoutePathPoint(
+                              latitude: latLng.latitude,
+                              longitude: latLng.longitude,
+                            ),
+                          );
+                        },
                       ),
-                    MarkerLayer(
-                      markers: state.points
-                          .map(
-                            (point) => Marker(
-                              point: point.latLng,
-                              width: 18,
-                              height: 18,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  border: Border.all(color: Colors.white, width: 2),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                          userAgentPackageName: 'rmce_app.evanhgs.fr',
+                          subdomains: const ['a', 'b', 'c', 'd'],
+                        ),
+                        if (state.points.length >= 2)
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points:
+                                    state.points.map((point) => point.latLng).toList(),
+                                strokeWidth: 5,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        MarkerLayer(
+                          markers: state.points
+                              .map(
+                                (point) => Marker(
+                                  point: point.latLng,
+                                  width: 18,
+                                  height: 18,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      border:
+                                          Border.all(color: Colors.white, width: 2),
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
+                        if (currentPosition != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: currentPosition!,
+                                width: 18,
+                                height: 18,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color:
+                                        Theme.of(context).colorScheme.secondary,
+                                    border:
+                                        Border.all(color: Colors.white, width: 2),
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                          .toList(growable: false),
+                            ],
+                          ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
+            if (gpsMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                gpsMessage!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -474,6 +632,9 @@ class _LiveView extends StatelessWidget {
     required this.liveNameController,
     required this.liveDescriptionController,
     required this.livePublic,
+    required this.currentPosition,
+    required this.gpsMessage,
+    required this.onMapPositionChanged,
     required this.onVisibilityChanged,
   });
 
@@ -482,6 +643,9 @@ class _LiveView extends StatelessWidget {
   final TextEditingController liveNameController;
   final TextEditingController liveDescriptionController;
   final bool livePublic;
+  final LatLng? currentPosition;
+  final String? gpsMessage;
+  final void Function(MapCamera camera, bool hasGesture) onMapPositionChanged;
   final ValueChanged<bool> onVisibilityChanged;
 
   @override
@@ -494,36 +658,69 @@ class _LiveView extends StatelessWidget {
           children: [
             SizedBox(
               height: 250,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: FlutterMap(
-                  mapController: mapController,
-                  options: MapOptions(
-                    initialCenter: state.path.lastOrNull?.latLng ??
-                        const LatLng(48.8566, 2.3522),
-                    initialZoom: 14,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      userAgentPackageName: 'rmce_app.evanhgs.fr',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                    ),
-                    if (state.path.length >= 2)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: state.path.map((point) => point.latLng).toList(),
-                            strokeWidth: 6,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ],
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: FlutterMap(
+                      mapController: mapController,
+                      options: MapOptions(
+                        initialCenter: state.path.lastOrNull?.latLng ??
+                            currentPosition ??
+                            const LatLng(48.8566, 2.3522),
+                        initialZoom: 14,
+                        onPositionChanged: onMapPositionChanged,
                       ),
-                  ],
-                ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                          userAgentPackageName: 'rmce_app.evanhgs.fr',
+                          subdomains: const ['a', 'b', 'c', 'd'],
+                        ),
+                        if (state.path.length >= 2)
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points:
+                                    state.path.map((point) => point.latLng).toList(),
+                                strokeWidth: 6,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        if (currentPosition != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: currentPosition!,
+                                width: 18,
+                                height: 18,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    border:
+                                        Border.all(color: Colors.white, width: 3),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
+            if (gpsMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                gpsMessage!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 16),
             Card(
               child: Padding(

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/permissions/permission_coordinator.dart';
+import '../../services/gps_service.dart';
 import '../../services/geo_websocket_service.dart';
 import '../auth/auth_controller.dart';
 import '../challenges/challenges_controller.dart';
@@ -29,12 +33,99 @@ class FriendsSocialPage extends StatefulWidget {
 
 class _FriendsSocialPageState extends State<FriendsSocialPage> {
   final MapController _mapController = MapController();
+  final GPSService _gpsService = GPSService();
+  final PermissionCoordinator _permissionCoordinator = PermissionCoordinator();
   final TextEditingController _friendController = TextEditingController();
   final TextEditingController _postTitleController = TextEditingController();
   final TextEditingController _postBodyController = TextEditingController();
+  StreamSubscription<SpeedData>? _gpsSubscription;
+  LatLng? _currentPosition;
+  bool _didCenterOnUser = false;
+  String? _gpsMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _initLocation();
+    _gpsSubscription = _gpsService.speedStream.listen((data) {
+      _applyGpsData(data, recenterIfNeeded: !_didCenterOnUser);
+    });
+  }
+
+  Future<void> _initLocation() async {
+    final granted = await _permissionCoordinator.ensureLocationPermissionForMaps();
+    if (!mounted) {
+      return;
+    }
+    if (!granted) {
+      setState(() {
+        _gpsMessage =
+            'La localisation n’est pas autorisée. Active-la pour centrer la carte.';
+      });
+      return;
+    }
+
+    await _gpsService.init();
+    final current = await _gpsService.refreshCurrentPosition();
+    if (current != null) {
+      _applyGpsData(current, recenterIfNeeded: true);
+    } else if (mounted) {
+      setState(() {
+        _gpsMessage =
+            'Position introuvable pour l’instant. Vérifie GPS et localisation.';
+      });
+    }
+  }
+
+  void _applyGpsData(
+    SpeedData data, {
+    required bool recenterIfNeeded,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    final nextPosition = LatLng(data.latitude, data.longitude);
+    setState(() {
+      _currentPosition = nextPosition;
+      _gpsMessage = null;
+    });
+    if (recenterIfNeeded) {
+      _mapController.move(nextPosition, 15);
+      _didCenterOnUser = true;
+    }
+  }
+
+  Future<void> _centerOnUser() async {
+    if (_currentPosition != null) {
+      _mapController.move(_currentPosition!, 15);
+      return;
+    }
+    final granted = await _permissionCoordinator.ensureLocationPermissionForMaps();
+    if (!mounted) {
+      return;
+    }
+    if (!granted) {
+      setState(() {
+        _gpsMessage =
+            'Impossible de se localiser sans permission de localisation.';
+      });
+      return;
+    }
+    await _gpsService.init();
+    final current = await _gpsService.refreshCurrentPosition();
+    if (current == null) {
+      setState(() {
+        _gpsMessage =
+            'Aucune position disponible. Active le GPS du téléphone puis réessaie.';
+      });
+      return;
+    }
+    _applyGpsData(current, recenterIfNeeded: true);
+  }
 
   @override
   void dispose() {
+    _gpsSubscription?.cancel();
     _friendController.dispose();
     _postTitleController.dispose();
     _postBodyController.dispose();
@@ -80,6 +171,9 @@ class _FriendsSocialPageState extends State<FriendsSocialPage> {
                   builder: (context, state, _) => _FriendsMapTab(
                     mapController: _mapController,
                     state: state,
+                    currentPosition: _currentPosition,
+                    gpsMessage: _gpsMessage,
+                    onCenterOnUser: _centerOnUser,
                   ),
                 ),
                 ValueListenableBuilder<FriendsState>(
@@ -133,10 +227,16 @@ class _FriendsMapTab extends StatelessWidget {
   const _FriendsMapTab({
     required this.mapController,
     required this.state,
+    required this.currentPosition,
+    required this.gpsMessage,
+    required this.onCenterOnUser,
   });
 
   final MapController mapController;
   final FriendsState state;
+  final LatLng? currentPosition;
+  final String? gpsMessage;
+  final Future<void> Function() onCenterOnUser;
 
   @override
   Widget build(BuildContext context) {
@@ -146,9 +246,10 @@ class _FriendsMapTab extends StatelessWidget {
         FlutterMap(
           mapController: mapController,
           options: MapOptions(
-            initialCenter: location == null
-                ? const LatLng(48.8566, 2.3522)
-                : LatLng(location.lat, location.lng),
+            initialCenter: currentPosition ??
+                (location == null
+                    ? const LatLng(48.8566, 2.3522)
+                    : LatLng(location.lat, location.lng)),
             initialZoom: 13,
           ),
           children: [
@@ -158,6 +259,23 @@ class _FriendsMapTab extends StatelessWidget {
               userAgentPackageName: 'rmce_app.evanhgs.fr',
               subdomains: const ['a', 'b', 'c', 'd'],
             ),
+            if (currentPosition != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: currentPosition!,
+                    width: 18,
+                    height: 18,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             MarkerLayer(
               markers: state.locations.entries
                   .map(
@@ -209,6 +327,30 @@ class _FriendsMapTab extends StatelessWidget {
             ),
           ),
         ),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: FloatingActionButton.small(
+            heroTag: 'friends_center_btn',
+            onPressed: onCenterOnUser,
+            child: const Icon(Icons.my_location),
+          ),
+        ),
+        if (gpsMessage != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 86,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Text(
+                  gpsMessage!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

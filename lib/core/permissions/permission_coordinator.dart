@@ -21,6 +21,37 @@ class PermissionStatusSummary {
 }
 
 class PermissionCoordinator {
+  Future<PermissionStatusSummary> requestStartupPermissions() async {
+    await Permission.locationWhenInUse.request();
+    if (Platform.isAndroid) {
+      await Permission.notification.request();
+    }
+    await Permission.microphone.request();
+    if (Platform.isIOS) {
+      await Permission.sensors.request();
+    }
+    return getCurrentSummary();
+  }
+
+  Future<bool> ensureLocationPermissionForMaps() async {
+    final status = await Permission.locationWhenInUse.status;
+    if (status.isGranted) {
+      return true;
+    }
+
+    final requested = await Permission.locationWhenInUse.request();
+    return requested.isGranted;
+  }
+
+  Future<bool> isLocationPermanentlyDenied() async {
+    final status = await Permission.locationWhenInUse.status;
+    return status.isPermanentlyDenied;
+  }
+
+  Future<bool> isLocationServiceEnabled() {
+    return Permission.locationWhenInUse.serviceStatus.isEnabled;
+  }
+
   Future<PermissionStatusSummary> getCurrentSummary() async {
     final location = await Permission.location.status;
     final background = Platform.isAndroid

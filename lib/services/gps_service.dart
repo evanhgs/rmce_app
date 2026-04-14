@@ -32,6 +32,7 @@ class GPSService {
 
   StreamSubscription<Position>? _positionStream;
   final _speedController = StreamController<SpeedData>.broadcast();
+  Future<void>? _initializationFuture;
 
   final List<double> _recentSpeeds = [];
   double _currentSpeed = 0.0;
@@ -50,12 +51,25 @@ class GPSService {
   double get altitude => _altitude;
   double get accuracy => _accuracy;
   bool get isInitialized => _isInitialized;
+  bool get hasFix => _latitude != 0.0 || _longitude != 0.0;
 
   void resetMaxSpeed() {
     _maxSpeed = 0.0;
   }
 
   Future<void> init() async {
+    if (_initializationFuture != null) {
+      return _initializationFuture;
+    }
+    _initializationFuture = _initInternal();
+    try {
+      await _initializationFuture;
+    } finally {
+      _initializationFuture = null;
+    }
+  }
+
+  Future<void> _initInternal() async {
     if (_isInitialized) {
       return;
     }
@@ -79,10 +93,17 @@ class GPSService {
       return;
     }
 
+    await refreshCurrentPosition();
+
     _isInitialized = true;
     _positionStream = Geolocator.getPositionStream(
       locationSettings: _buildLocationSettings(),
-    ).listen(_onPositionUpdate);
+    ).listen(
+      _onPositionUpdate,
+      onError: (error) {
+        debugPrint('[GPS] Erreur de stream position: $error');
+      },
+    );
   }
 
   LocationSettings _buildLocationSettings() {
@@ -135,15 +156,63 @@ class GPSService {
     }
 
     _speedController.add(
-      SpeedData(
-        speed: _currentSpeed,
-        maxSpeed: _maxSpeed,
-        latitude: _latitude,
-        longitude: _longitude,
-        altitude: _altitude,
-        accuracy: _accuracy,
-        timestamp: position.timestamp,
-      ),
+      _buildSpeedData(position.timestamp),
+    );
+  }
+
+  SpeedData _buildSpeedData(DateTime timestamp) {
+    return SpeedData(
+      speed: _currentSpeed,
+      maxSpeed: _maxSpeed,
+      latitude: _latitude,
+      longitude: _longitude,
+      altitude: _altitude,
+      accuracy: _accuracy,
+      timestamp: timestamp,
+    );
+  }
+
+  Future<SpeedData?> refreshCurrentPosition() async {
+    try {
+      final current = await Geolocator.getCurrentPosition(
+        locationSettings: _buildSingleShotLocationSettings(),
+      );
+      _onPositionUpdate(current);
+      return _buildSpeedData(current.timestamp);
+    } catch (error) {
+      debugPrint('[GPS] getCurrentPosition a échoué: $error');
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          _onPositionUpdate(lastKnown);
+          return _buildSpeedData(lastKnown.timestamp);
+        }
+      } catch (lastKnownError) {
+        debugPrint('[GPS] getLastKnownPosition a échoué: $lastKnownError');
+      }
+    }
+    return null;
+  }
+
+  LocationSettings _buildSingleShotLocationSettings() {
+    if (Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        timeLimit: const Duration(seconds: 10),
+      );
+    }
+
+    if (Platform.isIOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+      );
+    }
+
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      timeLimit: Duration(seconds: 10),
     );
   }
 
