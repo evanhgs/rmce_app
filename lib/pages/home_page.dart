@@ -25,10 +25,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   bool _isBtnVisible = false;
 
-  String axis_right = "0.0";
-  String axis_left = "0.0";
-  String axis_front = "0.0";
-  String axis_back = "0.0";
+  String axisRight = "0.0";
+  String axisLeft = "0.0";
+  String axisFront = "0.0";
+  String axisBack = "0.0";
 
   DateTime? _lastAccelUpdate;
 
@@ -91,26 +91,29 @@ class _MyHomePageState extends State<MyHomePage> {
             setState(() {
               // X : gauche (-) / droite (+)
               if (event.x < 0) {
-                axis_left = event.x.abs().toStringAsFixed(1);
-                axis_right = "0.0";
+                axisLeft = event.x.abs().toStringAsFixed(1);
+                axisRight = "0.0";
               } else {
-                axis_right = event.x.toStringAsFixed(1);
-                axis_left = "0.0";
+                axisRight = event.x.toStringAsFixed(1);
+                axisLeft = "0.0";
               }
 
               // Z : arrière (-) / face (+)
               if (event.z < 0) {
-                axis_back = event.z.abs().toStringAsFixed(1);
-                axis_front = "0.0";
+                axisBack = event.z.abs().toStringAsFixed(1);
+                axisFront = "0.0";
               } else {
-                axis_front = event.z.toStringAsFixed(1);
-                axis_back = "0.0";
+                axisFront = event.z.toStringAsFixed(1);
+                axisBack = "0.0";
               }
             });
             _lastAccelUpdate = now;
           }
         },
         onError: (e) {
+          if (!mounted) {
+            return;
+          }
           showDialog(
             context: context,
             builder: (context) {
@@ -318,7 +321,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _buildAccelDisplay("FACE", axis_front, Colors.blue.shade400),
+                      _buildAccelDisplay("FACE", axisFront, Colors.blue.shade400),
                       const SizedBox(height: 8),
                       Expanded(
                         child: Row(
@@ -326,7 +329,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           children: [
                             Expanded(
                               flex: 1,
-                              child: _buildAccelDisplay("G", axis_left, Colors.orange.shade400),
+                              child: _buildAccelDisplay("G", axisLeft, Colors.orange.shade400),
                             ),
                             Expanded(
                               flex: 2,
@@ -357,13 +360,13 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                             Expanded(
                               flex: 1,
-                              child: _buildAccelDisplay("D", axis_right, Colors.orange.shade400),
+                              child: _buildAccelDisplay("D", axisRight, Colors.orange.shade400),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _buildAccelDisplay("ARRIÈRE", axis_back, Colors.red.shade400),
+                      _buildAccelDisplay("ARRIÈRE", axisBack, Colors.red.shade400),
                       const SizedBox(height: 8),
                     ],
                   ),

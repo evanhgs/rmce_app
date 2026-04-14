@@ -112,7 +112,7 @@ class _MapPageState extends State<MapPage> {
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                    'https://{s}.basemaps.cartocdn.com/{z}/{x}/{y}{r}.png',
                 userAgentPackageName: 'rmce_app.evanhgs.fr',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 maxZoom: 19,

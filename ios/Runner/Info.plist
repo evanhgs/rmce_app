@@ -67,8 +67,16 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-    <string>Localisation pour afficher votre position sur la carte</string>
+    <string>Votre position est utilisée pour enregistrer les parcours et mesurer les performances.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>La localisation en session permet de poursuivre le suivi du parcours si l’application passe en arrière-plan.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Le microphone permet d’estimer le niveau sonore pendant un parcours si vous l’autorisez.</string>
     <key>NSMotionUsageDescription</key>
-    <string>This app requires access to the barometer to provide altitude information.</string>
+    <string>Les capteurs de mouvement sont utilisés pour mesurer les accélérations, rotations et l’inclinaison.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

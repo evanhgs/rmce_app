@@ -1,17 +1,11 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 class SpeedData {
-  final double speed; // km/h
-  final double maxSpeed; // km/h
-  final double latitude;
-  final double longitude;
-  final double altitude;
-  final double accuracy;
-  final DateTime timestamp;
-
-  SpeedData({
+  const SpeedData({
     required this.speed,
     required this.maxSpeed,
     required this.latitude,
@@ -20,6 +14,14 @@ class SpeedData {
     required this.accuracy,
     required this.timestamp,
   });
+
+  final double speed;
+  final double maxSpeed;
+  final double latitude;
+  final double longitude;
+  final double altitude;
+  final double accuracy;
+  final DateTime timestamp;
 }
 
 class GPSService {
@@ -29,6 +31,9 @@ class GPSService {
   GPSService._internal();
 
   StreamSubscription<Position>? _positionStream;
+  final _speedController = StreamController<SpeedData>.broadcast();
+
+  final List<double> _recentSpeeds = [];
   double _currentSpeed = 0.0;
   double _maxSpeed = 0.0;
   double _latitude = 0.0;
@@ -36,8 +41,6 @@ class GPSService {
   double _altitude = 0.0;
   double _accuracy = 0.0;
   bool _isInitialized = false;
-
-  final _speedController = StreamController<SpeedData>.broadcast();
 
   Stream<SpeedData> get speedStream => _speedController.stream;
   double get currentSpeed => _currentSpeed;
@@ -48,10 +51,14 @@ class GPSService {
   double get accuracy => _accuracy;
   bool get isInitialized => _isInitialized;
 
-  void resetMaxSpeed() => _maxSpeed = 0.0;
+  void resetMaxSpeed() {
+    _maxSpeed = 0.0;
+  }
 
   Future<void> init() async {
-    if (_isInitialized) return;
+    if (_isInitialized) {
+      return;
+    }
 
     if (!await Geolocator.isLocationServiceEnabled()) {
       debugPrint('[GPS] Service de localisation désactivé');
@@ -73,37 +80,74 @@ class GPSService {
     }
 
     _isInitialized = true;
-
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+      locationSettings: _buildLocationSettings(),
+    ).listen(_onPositionUpdate);
+  }
+
+  LocationSettings _buildLocationSettings() {
+    if (Platform.isAndroid) {
+      return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-      ),
-    ).listen((Position position) {
-      _currentSpeed = (position.speed * 3.6).clamp(0, 400);
-      _latitude = position.latitude;
-      _longitude = position.longitude;
-      _altitude = position.altitude;
-      _accuracy = position.accuracy;
+        intervalDuration: const Duration(seconds: 1),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'RMCE suit votre parcours',
+          notificationText:
+              'La localisation reste active pour mesurer la session.',
+          enableWakeLock: true,
+        ),
+      );
+    }
 
-      if (_currentSpeed > _maxSpeed) {
-        _maxSpeed = _currentSpeed;
-      }
+    if (Platform.isIOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+      );
+    }
 
-      _speedController.add(SpeedData(
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    );
+  }
+
+  void _onPositionUpdate(Position position) {
+    _latitude = position.latitude;
+    _longitude = position.longitude;
+    _altitude = position.altitude;
+    _accuracy = position.accuracy;
+
+    final rawSpeed = (position.speed * 3.6).clamp(0, 400).toDouble();
+    _recentSpeeds.add(rawSpeed);
+    if (_recentSpeeds.length > 5) {
+      _recentSpeeds.removeAt(0);
+    }
+
+    final smoothSpeed =
+        _recentSpeeds.reduce((left, right) => left + right) / _recentSpeeds.length;
+    _currentSpeed = smoothSpeed;
+    if (_currentSpeed > _maxSpeed) {
+      _maxSpeed = _currentSpeed;
+    }
+
+    _speedController.add(
+      SpeedData(
         speed: _currentSpeed,
         maxSpeed: _maxSpeed,
         latitude: _latitude,
         longitude: _longitude,
         altitude: _altitude,
         accuracy: _accuracy,
-        timestamp: DateTime.now(),
-      ));
-    });
+        timestamp: position.timestamp,
+      ),
+    );
   }
 
   void dispose() {
     _positionStream?.cancel();
-    _speedController.close();
   }
 }
